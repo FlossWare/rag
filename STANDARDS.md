@@ -13,37 +13,24 @@ This package adheres to the following ADRs from [FlossWare/engineering-standards
 
 ## ADR-0001: Explicit Opt-In
 
-No automatic document ingestion, indexing, or side effects occur on import. Users explicitly create pipeline components (`DocumentIngester`, `EmbeddingStore`, `TokenChunker`, etc.) and invoke their methods. Importing the package does nothing beyond making classes available.
+No automatic document ingestion, indexing, or side effects occur on import. Components are explicitly created and invoked by callers.
 
 ## ADR-0006: Cross-Cutting Decorators
 
-Two convenience decorators are provided in `rag_ai.decorators`:
-
-- **`@chunked(max_tokens=512, overlap=50)`** -- Automatically chunks a string argument into token-bounded pieces before passing them to the decorated function.
-- **`@searchable(pipeline, top_k=5)`** -- Injects search-retrieved context from an `InMemoryKnowledgePipeline` into the decorated function.
-
-Both decorators work with sync and async functions.
+Cross-cutting decorators are kept separate from core business logic and are used only where they provide a clear composition benefit.
 
 ## ADR-0008: Free-First
 
-Zero external dependencies. The entire package uses only the Python standard library. No pip install beyond the package itself is required.
+The composition layer keeps its dependency footprint minimal. Optional infrastructure integrations should remain optional rather than becoming mandatory runtime dependencies.
 
 ## ADR-0009: Core Principles
 
-The package follows modular, composable design with contracts over implementations:
-
-- **TokenChunker** -- independent chunking strategy
-- **DocumentIngester** -- document storage with pluggable chunk sizes
-- **EmbeddingStore** -- vector storage with cosine similarity
-- **HybridSearcher** -- composes ingester + embedding store
-- **InMemoryKnowledgePipeline** -- composes chunker for simple keyword retrieval
-
-Each component is independently instantiable and composable with others.
+The repository follows modular, composable design with contracts over implementations. Reusable capabilities are being extracted into dedicated repositories rather than duplicated inside the RAG composition layer.
 
 ## ADR-0017: Agent-Neutral
 
-All components are plain Python classes with no dependency on any agent framework, runtime, or orchestration layer. They work identically whether called from a CLI script, a web server, an agent loop, or a test harness.
+RAG composition has no dependency on a particular agent framework or orchestration runtime. It can be consumed by applications, agents, workflows, and test harnesses.
 
 ## ADR-0020: Capability-Protocol Separation
 
-RAG capabilities (chunking, embedding, search, retrieval) are implemented as transport-independent Python classes. There is no coupling to REST, MCP, gRPC, or any other protocol. Transport bindings are the responsibility of the consuming application.
+Chunking, storage, retrieval, embedding, and other capabilities are independently replaceable. Transport bindings and application orchestration belong outside those foundational capability implementations.
