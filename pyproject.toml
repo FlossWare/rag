@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rag-ai"
+name = "rag"
 version = "0.1"
-description = "Standalone RAG pipeline with document ingestion, embeddings, and hybrid search."
+description = "RAG composition layer for document ingestion, context construction, and retrieval."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -30,9 +30,9 @@ classifiers = [
 dev = ["pytest", "ruff", "mypy", "bandit"]
 
 [project.urls]
-Homepage = "https://github.com/FlossWare/rag-ai"
-Repository = "https://github.com/FlossWare/rag-ai"
-Issues = "https://github.com/FlossWare/rag-ai/issues"
+Homepage = "https://github.com/FlossWare/rag"
+Repository = "https://github.com/FlossWare/rag"
+Issues = "https://github.com/FlossWare/rag/issues"
 
 [tool.setuptools.packages.find]
 include = ["rag_ai*"]
