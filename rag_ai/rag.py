@@ -189,7 +189,8 @@ class HybridSearcher:
                 metadata=chunk.metadata,
             )
         for embedding in self._embedding_store._storage.embeddings.values():
-            retriever.add_vector(embedding.chunk_id, embedding.vector)
+            if embedding.chunk_id in self._ingester._storage.chunks:
+                retriever.add_vector(embedding.chunk_id, embedding.vector)
 
         return await retriever.search(query, limit=limit, mode=mode)
 
