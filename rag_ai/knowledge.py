@@ -1,231 +1,97 @@
-"""RAG chunking and knowledge pipeline backends.
-
-All classes use only the standard library -- zero external dependencies.
-Suitable for testing, local development, and lightweight deployment
-profiles.  All data is lost on process exit.
-
-Classes
--------
-TokenChunker               -- sentence-based text chunker with overlap
-InMemoryKnowledgePipeline  -- keyword-scored retrieval over chunked documents
-"""
+"""RAG composition over the standalone chunking, storage, and retrieval capabilities."""
 
 from __future__ import annotations
 
-import re
+import hashlib
 import uuid
 
-from rag_ai.types import RetrievalResult
-
-# Characters-per-token estimate used to convert between character
-# lengths and approximate token counts.
-_CHARS_PER_TOKEN = 4
+from chunking import TokenChunker as CanonicalTokenChunker
+from retrieval import InMemoryRetriever, RetrievalResult
+from storage import ChunkRecord, DocumentRecord, InMemoryStorage
 
 
 class TokenChunker:
-    """Sentence-aware text chunker with token-bounded overlap.
+    """Backward-compatible text-only facade over the chunking capability."""
 
-    Sentences are split on ``". "`` and ``"\\n"``.  Each chunk accumulates
-    sentences until the estimated token count would exceed *max_tokens*.
-    Consecutive chunks share up to *overlap* tokens of trailing context
-    from the previous chunk.
-    """
+    def __init__(self) -> None:
+        self._chunker = CanonicalTokenChunker()
 
-    # Split on ". " or newline, keeping the delimiter attached to the
-    # preceding sentence so that periods are not lost.
-    _SPLIT_RE = re.compile(r"(?<=\. )|\n")
-
-    def chunk(
-        self,
-        content: str,
-        *,
-        max_tokens: int = 512,
-        overlap: int = 50,
-    ) -> list[str]:
-        """Split *content* into overlapping token-bounded chunks."""
-        if not content:
-            return []
-
-        sentences = self._split_sentences(content)
-        if not sentences:
-            return []
-
-        max_chars = max_tokens * _CHARS_PER_TOKEN
-        overlap_chars = overlap * _CHARS_PER_TOKEN
-
-        chunks: list[str] = []
-        current_sentences: list[str] = []
-        current_len = 0
-
-        for sentence in sentences:
-            sentence_len = len(sentence)
-
-            if sentence_len > max_chars:
-                if current_sentences:
-                    chunks.append("".join(current_sentences))
-                    current_sentences, current_len = self._build_overlap(
-                        current_sentences, overlap_chars
-                    )
-                for i in range(0, sentence_len, max_chars):
-                    chunks.append(sentence[i : i + max_chars])
-                current_sentences = []
-                current_len = 0
-                continue
-
-            if current_sentences and current_len + sentence_len > max_chars:
-                chunks.append("".join(current_sentences))
-                current_sentences, current_len = self._build_overlap(
-                    current_sentences, overlap_chars
-                )
-
-            current_sentences.append(sentence)
-            current_len += sentence_len
-
-        # Flush remaining content.
-        if current_sentences:
-            chunks.append("".join(current_sentences))
-
-        return chunks
-
-    # -- helpers --------------------------------------------------------------
-
-    @classmethod
-    def _split_sentences(cls, text: str) -> list[str]:
-        """Split *text* into sentence-like segments.
-
-        Empty segments are discarded, but whitespace within segments is
-        preserved.
-        """
-        parts = cls._SPLIT_RE.split(text)
-        return [p for p in parts if p]
-
-    @staticmethod
-    def _build_overlap(
-        sentences: list[str],
-        overlap_chars: int,
-    ) -> tuple[list[str], int]:
-        """Return trailing sentences that fit within *overlap_chars*.
-
-        Returns ``(overlap_sentences, total_char_length)``.
-        """
-        if overlap_chars <= 0:
-            return [], 0
-
-        tail: list[str] = []
-        total = 0
-        for sentence in reversed(sentences):
-            if total + len(sentence) > overlap_chars:
-                break
-            tail.append(sentence)
-            total += len(sentence)
-
-        tail.reverse()
-        return tail, total
+    def chunk(self, content: str, *, max_tokens: int = 512, overlap: int = 50) -> list[str]:
+        return [
+            chunk.content
+            for chunk in self._chunker.chunk(
+                content, max_tokens=max_tokens, overlap=overlap
+            )
+        ]
 
 
 class InMemoryKnowledgePipeline:
-    """In-memory RAG pipeline with keyword-frequency scoring.
-
-    Parameters
-    ----------
-    chunker:
-        A :class:`TokenChunker` used to split ingested content into chunks.
-    max_tokens:
-        Default token budget passed to the chunker.
-    overlap:
-        Default overlap (in tokens) passed to the chunker.
-    """
+    """Compose canonical chunking, storage, and retrieval implementations."""
 
     def __init__(
         self,
-        chunker: TokenChunker,
+        chunker: TokenChunker | CanonicalTokenChunker | None = None,
         *,
         max_tokens: int = 512,
         overlap: int = 50,
     ) -> None:
-        self._chunker = chunker
+        self._chunker = (
+            chunker._chunker
+            if isinstance(chunker, TokenChunker)
+            else chunker or CanonicalTokenChunker()
+        )
         self._max_tokens = max_tokens
         self._overlap = overlap
+        self._storage = InMemoryStorage()
+        self._retriever = InMemoryRetriever()
 
-        # doc_id -> list of chunk_ids
-        self._documents: dict[str, list[str]] = {}
-        # chunk_id -> chunk text
-        self._chunks: dict[str, str] = {}
-        # chunk_id -> doc_id
-        self._chunk_to_doc: dict[str, str] = {}
-        # chunk_id -> metadata dict
-        self._chunk_metadata: dict[str, dict] = {}
-
-    async def ingest(
-        self,
-        content: str,
-        *,
-        metadata: dict | None = None,
-    ) -> str:
-        """Chunk *content* and store internally.  Return a document id."""
-        doc_id = str(uuid.uuid4())
-        pieces = self._chunker.chunk(
+    async def ingest(self, content: str, *, metadata: dict | None = None) -> str:
+        document_id = str(uuid.uuid4())
+        chunks = self._chunker.chunk(
             content,
+            document_id=document_id,
             max_tokens=self._max_tokens,
             overlap=self._overlap,
+            metadata=metadata,
         )
-
-        chunk_ids: list[str] = []
-        for piece in pieces:
-            chunk_id = str(uuid.uuid4())
-            self._chunks[chunk_id] = piece
-            self._chunk_to_doc[chunk_id] = doc_id
-            self._chunk_metadata[chunk_id] = dict(metadata) if metadata else {}
-            chunk_ids.append(chunk_id)
-
-        self._documents[doc_id] = chunk_ids
-        return doc_id
-
-    async def query(
-        self,
-        question: str,
-        *,
-        limit: int = 10,
-    ) -> list[RetrievalResult]:
-        """Score chunks by keyword occurrence and return the top *limit*."""
-        words = _tokenize_query(question)
-        if not words:
-            return []
-
-        scored: list[tuple[str, float]] = []
-        for chunk_id, text in self._chunks.items():
-            score = _keyword_score(text, words)
-            if score > 0:
-                scored.append((chunk_id, score))
-
-        # Sort descending by score, then by chunk_id for determinism.
-        scored.sort(key=lambda t: (-t[1], t[0]))
-
-        results: list[RetrievalResult] = []
-        for chunk_id, score in scored[:limit]:
-            doc_id = self._chunk_to_doc[chunk_id]
-            results.append(
-                RetrievalResult(
-                    content=self._chunks[chunk_id],
-                    score=score,
-                    source=doc_id,
-                    chunk_id=chunk_id,
-                    metadata=dict(self._chunk_metadata.get(chunk_id, {})),
-                )
+        records = [
+            ChunkRecord(
+                id=chunk.id,
+                document_id=chunk.document_id,
+                content=chunk.content,
+                sequence=chunk.sequence,
+                token_count=chunk.token_count,
+                start_offset=chunk.start_offset,
+                end_offset=chunk.end_offset,
+                metadata=dict(chunk.metadata),
+                provenance=dict(chunk.provenance),
             )
+            for chunk in chunks
+        ]
+        document = DocumentRecord(
+            id=document_id,
+            content=content,
+            chunk_ids=[chunk.id for chunk in records],
+            metadata=dict(metadata or {}),
+            content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        )
+        await self._storage.put_document(document)
+        for chunk in records:
+            await self._storage.put_chunk(chunk)
+            self._retriever.add_chunk(
+                chunk.id,
+                chunk.content,
+                source=document_id,
+                metadata=chunk.metadata,
+            )
+        return document_id
 
-        return results
+    async def query(self, question: str, *, limit: int = 10) -> list[RetrievalResult]:
+        if not question.strip():
+            return []
+        return await self._retriever.search(question, limit=limit, mode="keyword")
 
-
-# -- helpers ------------------------------------------------------------------
-
-
-def _tokenize_query(text: str) -> list[str]:
-    """Lowercase and split query text into individual words."""
-    return text.lower().split()
-
-
-def _keyword_score(text: str, words: list[str]) -> float:
-    """Count how many times *words* appear in *text* (case-insensitive)."""
-    lower = text.lower()
-    return float(sum(lower.count(w) for w in words))
+    @property
+    def storage(self) -> InMemoryStorage:
+        """Expose the composed storage backend for advanced callers."""
+        return self._storage

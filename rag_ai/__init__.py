@@ -1,18 +1,13 @@
-"""rag-ai: standalone RAG pipeline with document ingestion, embeddings, and hybrid search."""
+"""RAG composition facade with compatibility exports."""
 
 from __future__ import annotations
 
-from rag_ai.knowledge import InMemoryKnowledgePipeline, TokenChunker
-from rag_ai.rag import (
-    ChunkRecord,
-    DocumentIngester,
-    DocumentRecord,
-    EmbeddingRecord,
-    EmbeddingStore,
-    HybridSearcher,
-)
+from retrieval import RetrievalResult
+from storage import ChunkRecord, DocumentRecord, EmbeddingRecord
+
 from rag_ai.decorators import chunked, searchable
-from rag_ai.types import RetrievalResult
+from rag_ai.knowledge import InMemoryKnowledgePipeline, TokenChunker
+from rag_ai.rag import DocumentIngester, EmbeddingStore, HybridSearcher
 
 __all__ = [
     "ChunkRecord",
