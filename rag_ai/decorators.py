@@ -14,7 +14,8 @@ from __future__ import annotations
 import asyncio
 import functools
 import inspect
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from rag_ai.knowledge import InMemoryKnowledgePipeline, TokenChunker
 
@@ -28,28 +29,8 @@ def chunked(
     """Decorator that chunks a text argument before passing it to the function.
 
     The decorated function receives a ``list[str]`` of chunks instead of
-    the original string for the parameter named *arg_name*.  If the
+    the original string for the parameter named *arg_name*. If the
     argument is already a list, it is passed through unchanged.
-
-    Parameters
-    ----------
-    max_tokens:
-        Maximum token budget per chunk (estimated at 4 chars/token).
-    overlap:
-        Number of overlapping tokens between consecutive chunks.
-    arg_name:
-        Name of the parameter whose value should be chunked.
-
-    Example
-    -------
-    ::
-
-        @chunked(max_tokens=256, overlap=25)
-        def process(content: list[str]) -> int:
-            return len(content)
-
-        # Passing a long string automatically chunks it:
-        n = process(content="A very long document...")
     """
     chunker = TokenChunker()
 
@@ -86,35 +67,7 @@ def searchable(
     query_arg: str = "query",
     context_arg: str = "context",
 ) -> Callable:
-    """Decorator that injects search results as additional context.
-
-    Before the decorated function runs, the *query_arg* value is used to
-    query the *pipeline*.  The top *top_k* results are injected as a
-    ``list[str]`` into the *context_arg* keyword argument.
-
-    Parameters
-    ----------
-    pipeline:
-        An :class:`InMemoryKnowledgePipeline` to search against.
-    top_k:
-        Maximum number of search results to inject.
-    query_arg:
-        Name of the parameter containing the search query.
-    context_arg:
-        Name of the parameter that receives the retrieved context.
-
-    Example
-    -------
-    ::
-
-        pipeline = InMemoryKnowledgePipeline(TokenChunker())
-        # ... ingest documents into pipeline ...
-
-        @searchable(pipeline, top_k=3)
-        async def answer(query: str, context: list[str] | None = None) -> str:
-            snippets = context or []
-            return f"Found {len(snippets)} relevant passages for: {query}"
-    """
+    """Decorator that injects search results as additional context."""
 
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
@@ -133,20 +86,16 @@ def searchable(
             if isinstance(query_value, str) and query_value:
                 try:
                     asyncio.get_running_loop()
-                    raise RuntimeError("event loop already running")
                 except RuntimeError:
-                    results = asyncio.run(
-                        pipeline.query(query_value, limit=top_k)
-                    )
+                    results = asyncio.run(pipeline.query(query_value, limit=top_k))
+                else:
+                    raise RuntimeError("event loop already running")
                 bound.arguments[context_arg] = [r.content for r in results]
             return fn(*bound.args, **bound.kwargs)
 
         return async_wrapper if inspect.iscoroutinefunction(fn) else sync_wrapper
 
     return decorator
-
-
-# -- helpers ------------------------------------------------------------------
 
 
 def _bind_arguments(
