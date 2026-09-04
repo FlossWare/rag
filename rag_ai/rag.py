@@ -7,17 +7,13 @@ keeping the composition layer thin.
 
 from __future__ import annotations
 
+import hashlib
 import math
 import uuid
 
-from retrieval import InMemoryRetriever, RetrievalResult
-from storage import (
-    ChunkRecord,
-    DocumentRecord,
-    EmbeddingRecord,
-    InMemoryStorage,
-)
 from chunking import TokenChunker as CanonicalTokenChunker
+from retrieval import InMemoryRetriever, RetrievalResult
+from storage import ChunkRecord, DocumentRecord, EmbeddingRecord, InMemoryStorage
 
 
 class DocumentIngester:
@@ -37,8 +33,6 @@ class DocumentIngester:
         metadata: dict | None = None,
         provenance: dict | None = None,
     ) -> str:
-        import hashlib
-
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
         existing = self._hash_index.get(content_hash)
         if existing is not None:
