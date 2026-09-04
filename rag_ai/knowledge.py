@@ -6,8 +6,7 @@ import hashlib
 import uuid
 
 from chunking import TokenChunker as CanonicalTokenChunker
-from retrieval import InMemoryRetriever
-from retrieval import RetrievalResult
+from retrieval import InMemoryRetriever, RetrievalResult
 from storage import ChunkRecord, DocumentRecord, InMemoryStorage
 
 
