@@ -1,10 +1,30 @@
 # rag
 
-Standalone RAG (Retrieval-Augmented Generation) composition layer for document ingestion, embeddings, and retrieval. The repository is being refactored so reusable capabilities live in dedicated FlossWare repositories such as `chunking`, `storage`, and `retrieval`.
+RAG (retrieval-augmented generation) composition capability for FlossWare.
+
+RAG composes foundational capabilities such as `chunking`, `storage`, `retrieval`, and model invocation into a reusable retrieval-to-context pipeline. It does **not** own Loom orchestration, Worker/Arbiter execution, provider routing, or durable Knowledge.
+
+## Architectural boundary
+
+```text
+document -> chunking -> storage/indexing -> retrieval -> evidence/context
+                                                |
+                                                v
+                                           model-gateway
+```
+
+- **chunking** owns deterministic document segmentation.
+- **storage** owns persistence contracts and adapters.
+- **retrieval** owns lexical/vector/hybrid retrieval and ranking.
+- **knowledge** owns durable, versioned knowledge and provenance.
+- **model-gateway** owns model/provider invocation.
+- **loom-ai** owns Intent, Workers, Arbiters, execution, evaluation, and orchestration.
+
+RAG is therefore a capability composition layer that Loom Workers can use. It must remain independently usable by applications and workflows.
 
 ## Status
 
-This repository is the RAG composition/application layer. Capability implementations are being extracted into independently reusable repositories.
+Active capability repository. Keep implementation focused on RAG composition and integration. Foundational capabilities belong in their dedicated repositories.
 
 ## Install
 
@@ -12,47 +32,9 @@ This repository is the RAG composition/application layer. Capability implementat
 pip install -e .
 ```
 
-## Architecture
+## Design principle
 
-```text
-document
-   |
-   v
-chunking
-   |
-   +----> storage
-   |
-   +----> embedding
-   |
-   v
-retrieval
-   |
-   v
-evidence / context
-   |
-   v
-rag composition
-   |
-   v
-generation
-```
-
-The goal is to keep RAG composition separate from foundational capabilities. Chunking, storage, and retrieval should be independently usable by other applications, agents, and workflows.
-
-## FlossWare Engineering Standards
-
-This package complies with the following [FlossWare Engineering Standards](https://github.com/FlossWare/engineering-standards) ADRs:
-
-| ADR | Title | How |
-|-----|-------|-----|
-| ADR-0001 | Explicit Opt-In | No side effects on import; all components are explicitly created |
-| ADR-0006 | Cross-Cutting Decorators | Convenience decorators where appropriate |
-| ADR-0008 | Free-First | Zero external dependencies where practical |
-| ADR-0009 | Core Principles | Modular, composable components with contracts over implementations |
-| ADR-0017 | Agent-Neutral | No agent framework dependency |
-| ADR-0020 | Capability-Protocol Separation | Transport-independent RAG capabilities |
-
-See [STANDARDS.md](STANDARDS.md) for full compliance details.
+Expose contracts and composition points; hide provider, storage, and execution mechanisms behind replaceable implementations.
 
 ## License
 
